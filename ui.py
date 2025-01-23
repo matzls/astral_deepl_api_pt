@@ -1,135 +1,69 @@
 import streamlit as st
-import httpx
-import json
+import requests
 import os
-import time
+from dotenv import load_dotenv
 
-st.set_page_config(
-    page_title="DeepL API Testing Interface",
-    layout="wide"
-)
+# Load environment variables (ensure your .env includes DEEPL_API_KEY)
+load_dotenv()
+DEEPL_API_KEY = os.getenv("DEEPL_API_KEY")
+DEEPL_API_URL = "https://api.deepl.com"
+
+def improve_text_sync(text_list, language="EN-US", context=None):
+    """
+    Synchronous version of the improve_text function that calls the DeepL Write /v2/write/rephrase endpoint.
+    text_list: list of strings
+    language: e.g. "EN-US", "DE", etc.
+    context: optional context string
+    """
+    url = f"{DEEPL_API_URL}/v2/write/rephrase"
+    headers = {
+        "Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "text": text_list,   # array of strings
+        "language": language
+    }
+    if context:
+        payload["context"] = context
+    
+    # Make the POST request
+    resp = requests.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+    return resp.json()
 
 def main():
-    st.title("DeepL API Testing Interface")
+    st.title("DeepL Write Demo")
+    st.write("Enter one or more lines to improve with the DeepL Write API.")
     
-    tab1, tab2, tab3 = st.tabs(["Translate Text", "Translate Files", "DeepL Write"])
-    
-    with tab1:
-        col1, col2 = st.columns(2)
-        with col1:
-            source_lang = st.selectbox(
-                "Detect language",
-                ["Auto Detect", "English", "German", "French", "Spanish"],
-                index=0
-            )
-            source_text = st.text_area(
-                "Type to translate",
-                height=200,
-                placeholder="Enter text here..."
-            )
+    # User inputs
+    user_text = st.text_area("Enter your text (multiple lines optional)", 
+                             value="I am very happy for meet you yesterday.")
+    language = st.text_input("Target language code (e.g. EN-US, DE)", value="EN-US")
+    context = st.text_input("Context (optional)", value="Email to a business colleague")
+
+    if st.button("Improve Text"):
+        # Split user_text by lines to create a list
+        lines = [line.strip() for line in user_text.split("\n") if line.strip()]
+        
+        try:
+            rephrased_data = improve_text_sync(lines, language=language, context=context)
             
-            if st.button("Translate"):
-                if source_text:
-                    try:
-                        target_lang = "DE"  # Default to German for testing
-                        data = {
-                            "text": source_text,
-                            "target_lang": target_lang
-                        }
-                        response = httpx.post(
-                            "http://127.0.0.1:8000/translate_text",
-                            data=data
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            with col2:
-                                st.text_area(
-                                    "Translation",
-                                    value=result["translated_text"],
-                                    height=200
-                                )
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
+            st.subheader("DeepL Write Response")
+            st.json(rephrased_data)
 
-    with tab2:
-        st.header("Document Translation")
-        
-        uploaded_file = st.file_uploader(
-            "Upload a document",
-            type=["txt", "pdf", "docx", "pptx", "xlsx"]
-        )
-        
-        target_lang = st.selectbox(
-            "Target Language",
-            ["DE", "EN", "FR", "ES"],
-            key="doc_target_lang"
-        )
-        
-        if uploaded_file and st.button("Translate Document"):
-            try:
-                files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                data = {"target_lang": target_lang}
-                
-                with st.spinner("Uploading document..."):
-                    response = httpx.post(
-                        "http://127.0.0.1:8000/translate_document",
-                        files=files,
-                        data=data
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        doc_id = result["document_id"]
-                        doc_key = result["document_key"]
-                        
-                        progress_placeholder = st.empty()
-                        status_container = st.empty()
-                        
-                        # Poll for status
-                        while True:
-                            try:
-                                status_response = httpx.get(
-                                    f"http://127.0.0.1:8000/document_status/{doc_id}",
-                                    params={"document_key": doc_key},
-                                    timeout=100
-                                )
-                                
-                                if status_response.status_code == 200:
-                                    status = status_response.json()
-                                    status_container.write(f"Current status: {status['status'].capitalize()}")
-                                    
-                                    if status["status"] == "done":
-                                        progress_placeholder.success("Translation complete!")
-                                        download_url = f"http://127.0.0.1:8000/download_document/{doc_id}?document_key={doc_key}"
-                                        st.markdown(
-                                            f'<a href="{download_url}" target="_blank" style="padding: 0.5rem 1rem; background-color: #4CAF50; color: white; border-radius: 0.25rem; text-decoration: none;">Download Translated Document</a>',
-                                            unsafe_allow_html=True
-                                        )
-                                        break
-                                    elif status["status"] == "error":
-                                        progress_placeholder.error("Translation failed!")
-                                        break
-                                    
-                                    time.sleep(2)
-                                else:
-                                    st.error("Error checking translation status")
-                                    break
-                                    
-                            except httpx.TimeoutException:
-                                st.error("Status check timed out")
-                                break
-                            except Exception as e:
-                                st.error(f"Error: {str(e)}")
-                                break
-                    else:
-                        st.error("Failed to initiate translation")
-                        
-            except Exception as e:
-                st.error(f"Error during document translation: {str(e)}")
+            improvements = rephrased_data.get("improvements", [])
+            if improvements:
+                st.subheader("Improved Lines")
+                for i, imp in enumerate(improvements, start=1):
+                    st.write(f"Line {i}: {imp.get('text')}")
+            else:
+                st.write("No improvements found in response.")
 
-    with tab3:
-        st.header("DeepL Write")
-        st.info("DeepL Write feature coming soon...")
+        except requests.HTTPError as e:
+            st.error(f"Error calling DeepL Write API: {str(e)}")
+        except Exception as e:
+            st.error(f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
     main()

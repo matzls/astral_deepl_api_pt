@@ -5,7 +5,7 @@ import json
 from dotenv import load_dotenv
 from deepl_api import DEEPL_API_URL
 
-# Load environment variables from .env
+# Load environment variables
 load_dotenv()
 
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY")
@@ -15,20 +15,12 @@ print(f"Using API URL: {DEEPL_API_URL}")
 
 async def improve_text(
     texts: List[str],
-    language: Optional[str] = None,
-    context: Optional[str] = None,
-    # style: Optional[str] = None,    # Example for future usage if DeepL adds "style"
-    # domain: Optional[str] = None,   # Example for future usage if DeepL adds "domain"
+    target_lang: str,
+    writing_style: Optional[str] = None,
+    tone: Optional[str] = None
 ) -> Dict[Any, Any]:
     """
     Improve text using DeepL Write API.
-
-    Args:
-        texts: A list of strings to rephrase/improve.
-        language: Two-letter or five-letter language code (e.g. "EN" or "EN-US").
-        context: Optional context for improvement (e.g. "Email to a business colleague").
-        style: Placeholder for future usage if DeepL adds a 'style' parameter.
-        domain: Placeholder for future usage if DeepL adds domain-specific improvements.
     """
     url = f"{DEEPL_API_URL}/v2/write/rephrase"
     
@@ -37,19 +29,15 @@ async def improve_text(
         "Content-Type": "application/json",
     }
     
-    # Build the request payload
     data = {
-        "text": texts,  # list of strings
-        "language": language if language else "EN-US",
+        "text": texts,
+        "target_lang": target_lang
     }
-    if context:
-        data["context"] = context
     
-    # Uncomment if the API offers these fields in the future
-    # if style:
-    #     data["style"] = style
-    # if domain:
-    #     data["domain"] = domain
+    if writing_style:
+        data["writing_style"] = writing_style
+    elif tone:
+        data["tone"] = tone
 
     print(f"\nMaking request to: {url}")
     print(f"Request data:\n{json.dumps(data, indent=2)}")
@@ -67,58 +55,95 @@ async def improve_text(
 
 async def run_tests():
     """
-    Runs multiple test scenarios against the DeepL Write API for broader coverage.
+    Tests comparing array structures and parameters
     """
+    # Base paragraph as one string
+    full_paragraph = (
+        "The research findings indicate significant progress in renewable energy adoption. "
+        "Solar and wind installations have doubled in the past year. "
+        "Energy storage solutions are becoming more cost-effective. "
+        "These developments suggest a promising future for sustainable power generation."
+    )
+    
+    # Same paragraph split into sentences
+    split_sentences = [
+        "The research findings indicate significant progress in renewable energy adoption.",
+        "Solar and wind installations have doubled in the past year.",
+        "Energy storage solutions are becoming more cost-effective.",
+        "These developments suggest a promising future for sustainable power generation."
+    ]
+
     test_scenarios = [
         {
-            "description": "Single short sentence, default language",
-            "texts": ["I am very happy for meet you yesterday."],
-            "language": None,
-            "context": None
+            "description": "1a) Single array element - base test",
+            "texts": [full_paragraph],
+            "target_lang": "en-US"
         },
         {
-            "description": "Single short sentence, with context and explicit language",
-            "texts": ["I am very happy for meet you yesterday."],
-            "language": "EN-US",
-            "context": "Email to a business colleague"
+            "description": "1b) Multiple array elements - base test",
+            "texts": split_sentences,
+            "target_lang": "en-US"
         },
         {
-            "description": "Multiple lines of text",
-            "texts": [
-                "I love programming in Python.",
-                "Writing great code is essential to building robust applications."
-            ],
-            "language": "EN-US"
+            "description": "2a) Single array + academic style",
+            "texts": [full_paragraph],
+            "target_lang": "en-US",
+            "writing_style": "academic"
         },
         {
-            "description": "Multiple lines, with context",
-            "texts": [
-                "Your resume is quite impressive.",
-                "We would appreciate your feedback as soon as possible."
-            ],
-            "language": "EN-US",
-            "context": "Email HR message"
+            "description": "2b) Multiple array + academic style",
+            "texts": split_sentences,
+            "target_lang": "en-US",
+            "writing_style": "academic"
         },
-        # If DeepL adds style/domain parameters, you can add more tests here
-        # {
-        #     "description": "Experiment with hypothetical 'style' parameter",
-        #     "texts": ["Hello", "This is a second text."],
-        #     "language": "EN-US",
-        #     "style": "friendly"
-        # }
+        {
+            "description": "3a) Single array + casual style",
+            "texts": [full_paragraph],
+            "target_lang": "en-US",
+            "writing_style": "casual"
+        },
+        {
+            "description": "3b) Multiple array + casual style",
+            "texts": split_sentences,
+            "target_lang": "en-US",
+            "writing_style": "casual"
+        },
+        {
+            "description": "4a) Single array + enthusiastic tone",
+            "texts": [full_paragraph],
+            "target_lang": "en-US",
+            "tone": "enthusiastic"
+        },
+        {
+            "description": "4b) Multiple array + enthusiastic tone",
+            "texts": split_sentences,
+            "target_lang": "en-US",
+            "tone": "enthusiastic"
+        },
+        {
+            "description": "5a) Single array + diplomatic tone",
+            "texts": [full_paragraph],
+            "target_lang": "en-US",
+            "tone": "diplomatic"
+        },
+        {
+            "description": "5b) Multiple array + diplomatic tone",
+            "texts": split_sentences,
+            "target_lang": "en-US",
+            "tone": "diplomatic"
+        }
     ]
 
     for i, scenario in enumerate(test_scenarios, start=1):
-        print(f"\n--- Test {i}: {scenario['description']} ---")
+        print(f"\n=== Test {i}: {scenario['description']} ===")
         result = await improve_text(
             texts=scenario["texts"],
-            language=scenario.get("language"),
-            context=scenario.get("context")
-            # style=scenario.get("style"),
-            # domain=scenario.get("domain")
+            target_lang=scenario["target_lang"],
+            writing_style=scenario.get("writing_style"),
+            tone=scenario.get("tone")
         )
         print("Result:\n", json.dumps(result, indent=2))
-        print("-----------------------------------------------------------")
+        print("=" * 80)
 
 async def main():
     await run_tests()
