@@ -11,10 +11,9 @@ load_dotenv()
 
 app = FastAPI()
 """
-cd /Users/mg/Desktop/GitHub/ASTRAL/Code/Deepl_API_UI_Proto
+cd /Users/mg/Desktop/GitHub/Astral_Code/astral_deepl_api_pt
 uvicorn deepl_api:app --reload
 """
-
 
 # Mount the static files directory
 app.mount("/static", StaticFiles(directory="."), name="static")
