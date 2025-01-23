@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepL Translation</title>
+    <!-- 
+    This HTML file provides a user interface for the DeepL Translation API.
+    It includes functionality for text and document translation, with support
+    for multiple languages and character counting.
+
+    The page communicates with a FastAPI backend running on http://127.0.0.1:8000.
+    Make sure the backend server is running before using this interface.
+
+    To use:
+    1. Enter text or select a document for translation
+    2. Choose source and target languages
+    3. Click the appropriate translate button
+    4. For documents, wait for the translation to complete and then download
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        select, button {
+            margin: 5px 0;
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #characterCount, #documentStatus {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .loading {
+            display: none;
+            margin-left: 10px;
+        }
+        .error {
+            color: red;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>DeepL Translation</h1>
+    
+    <h2>Text Translation</h2>
+    <textarea id="sourceText" placeholder="Enter text to translate" oninput="updateCharacterCount()"></textarea>
+    <div id="characterCount">Characters: 0</div>
+    <div>
+        <label for="sourceLang">Source Language (leave empty for auto-detect):</label>
+        <select id="sourceLang">
+            <option value="">Auto-detect</option>
+            <option value="BG">Bulgarian</option>
+            <option value="CS">Czech</option>
+            <option value="DA">Danish</option>
+            <option value="DE">German</option>
+            <option value="EL">Greek</option>
+            <option value="EN">English</option>
+            <option value="ES">Spanish</option>
+            <option value="ET">Estonian</option>
+            <option value="FI">Finnish</option>
+            <option value="FR">French</option>
+            <option value="HU">Hungarian</option>
+            <option value="IT">Italian</option>
+            <option value="JA">Japanese</option>
+            <option value="LT">Lithuanian</option>
+            <option value="LV">Latvian</option>
+            <option value="NL">Dutch</option>
+            <option value="PL">Polish</option>
+            <option value="PT">Portuguese</option>
+            <option value="RO">Romanian</option>
+            <option value="RU">Russian</option>
+            <option value="SK">Slovak</option>
+            <option value="SL">Slovenian</option>
+            <option value="SV">Swedish</option>
+            <option value="ZH">Chinese</option>
+        </select>
+    </div>
+    <div>
+        <label for="targetLang">Target Language:</label>
+        <select id="targetLang">
+            <option value="">Select target language</option>
+            <option value="BG">Bulgarian</option>
+            <option value="CS">Czech</option>
+            <option value="DA">Danish</option>
+            <option value="DE">German</option>
+            <option value="EL">Greek</option>
+            <option value="EN-GB">English (British)</option>
+            <option value="EN-US">English (American)</option>
+            <option value="ES">Spanish</option>
+            <option value="ET">Estonian</option>
+            <option value="FI">Finnish</option>
+            <option value="FR">French</option>
+            <option value="HU">Hungarian</option>
+            <option value="IT">Italian</option>
+            <option value="JA">Japanese</option>
+            <option value="LT">Lithuanian</option>
+            <option value="LV">Latvian</option>
+            <option value="NL">Dutch</option>
+            <option value="PL">Polish</option>
+            <option value="PT-PT">Portuguese (European)</option>
+            <option value="PT-BR">Portuguese (Brazilian)</option>
+            <option value="RO">Romanian</option>
+            <option value="RU">Russian</option>
+            <option value="SK">Slovak</option>
+            <option value="SL">Slovenian</option>
+            <option value="SV">Swedish</option>
+            <option value="ZH">Chinese (simplified)</option>
+        </select>
+    </div>
+    <button onclick="translateText()">Translate Text</button>
+    <span class="loading" id="textLoading">Translating...</span>
+    <textarea id="translatedText" readonly></textarea>
+    <div id="textError" class="error"></div>
+
+    <h2>Document Translation</h2>
+    <input type="file" id="documentFile" accept=".txt,.pdf,.docx,.pptx,.xlsx">
+    <div>
+        <label for="docSourceLang">Source Language (leave empty for auto-detect):</label>
+        <select id="docSourceLang">
+            <option value="">Auto-detect</option>
+            <option value="BG">Bulgarian</option>
+            <option value="CS">Czech</option>
+            <option value="DA">Danish</option>
+            <option value="DE">German</option>
+            <option value="EL">Greek</option>
+            <option value="EN">English</option>
+            <option value="ES">Spanish</option>
+            <option value="ET">Estonian</option>
+            <option value="FI">Finnish</option>
+            <option value="FR">French</option>
+            <option value="HU">Hungarian</option>
+            <option value="IT">Italian</option>
+            <option value="JA">Japanese</option>
+            <option value="LT">Lithuanian</option>
+            <option value="LV">Latvian</option>
+            <option value="NL">Dutch</option>
+            <option value="PL">Polish</option>
+            <option value="PT">Portuguese</option>
+            <option value="RO">Romanian</option>
+            <option value="RU">Russian</option>
+            <option value="SK">Slovak</option>
+            <option value="SL">Slovenian</option>
+            <option value="SV">Swedish</option>
+            <option value="ZH">Chinese</option>
+        </select>
+    </div>
+    <div>
+        <label for="docTargetLang">Target Language:</label>
+        <select id="docTargetLang">
+            <option value="">Select target language</option>
+            <option value="BG">Bulgarian</option>
+            <option value="CS">Czech</option>
+            <option value="DA">Danish</option>
+            <option value="DE">German</option>
+            <option value="EL">Greek</option>
+            <option value="EN-GB">English (British)</option>
+            <option value="EN-US">English (American)</option>
+            <option value="ES">Spanish</option>
+            <option value="ET">Estonian</option>
+            <option value="FI">Finnish</option>
+            <option value="FR">French</option>
+            <option value="HU">Hungarian</option>
+            <option value="IT">Italian</option>
+            <option value="JA">Japanese</option>
+            <option value="LT">Lithuanian</option>
+            <option value="LV">Latvian</option>
+            <option value="NL">Dutch</option>
+            <option value="PL">Polish</option>
+            <option value="PT-PT">Portuguese (European)</option>
+            <option value="PT-BR">Portuguese (Brazilian)</option>
+            <option value="RO">Romanian</option>
+            <option value="RU">Russian</option>
+            <option value="SK">Slovak</option>
+            <option value="SL">Slovenian</option>
+            <option value="SV">Swedish</option>
+            <option value="ZH">Chinese (simplified)</option>
+        </select>
+    </div>
+    <button onclick="translateDocument()">Translate Document</button>
+    <span class="loading" id="docLoading">Translating...</span>
+    <div id="documentStatus"></div>
+    <button id="downloadButton" style="display: none;" onclick="downloadTranslatedDocument()">Download Translated Document</button>
+    <div id="docError" class="error"></div>
+
+    <script>
+        const API_URL = '';
+        let documentId, documentKey;
+
+        function updateCharacterCount() {
+            const text = document.getElementById('sourceText').value;
+            document.getElementById('characterCount').textContent = `Characters: ${text.length}`;
+        }
+
+        /**
+         * Translates the input text using the DeepL API.
+         * Performs checks for target language selection and different source/target languages.
+         * Updates the UI with the translation result or error message.
+         */
+        async function translateText() {
+            const sourceText = document.getElementById('sourceText').value;
+            const sourceLang = document.getElementById('sourceLang').value;
+            const targetLang = document.getElementById('targetLang').value;
+
+            console.log("Sending data:", { sourceText, sourceLang, targetLang });
+
+            if (!targetLang) {
+                document.getElementById('textError').textContent = 'Please select a target language.';
+                return;
+            }
+
+            if (sourceLang && sourceLang === targetLang) {
+                document.getElementById('textError').textContent = 'Source and target languages must be different.';
+                return;
+            }
+
+            document.getElementById('textLoading').style.display = 'inline';
+            document.getElementById('textError').textContent = '';
+
+            const formData = new FormData();
+            formData.append('text', sourceText);
+            formData.append('target_lang', targetLang);
+            if (sourceLang) formData.append('source_lang', sourceLang);
+
+            try {
+                const response = await axios.post(`${API_URL}/translate_text`, formData);
+                console.log("Response:", response.data);
+                document.getElementById('translatedText').value = response.data.translated_text;
+            } catch (error) {
+                console.error('Error translating text:', error.response ? error.response.data : error);
+                document.getElementById('textError').textContent = 'Error translating text. Please try again.';
+            } finally {
+                document.getElementById('textLoading').style.display = 'none';
+            }
+        }
+
+        /**
+         * Initiates the translation of a document using the DeepL API.
+         * Performs checks for file selection, target language, and different source/target languages.
+         * Starts the document translation process and initiates status checking.
+         */
+        async function translateDocument() {
+            const file = document.getElementById('documentFile').files[0];
+            const sourceLang = document.getElementById('docSourceLang').value;
+            const targetLang = document.getElementById('docTargetLang').value;
+
+            console.log("Sending document data:", { file: file.name, sourceLang, targetLang });
+
+            if (!file) {
+                document.getElementById('docError').textContent = 'Please select a file to translate.';
+                return;
+            }
+
+            if (!targetLang) {
+                document.getElementById('docError').textContent = 'Please select a target language.';
+                return;
+            }
+
+            if (sourceLang && sourceLang === targetLang) {
+                document.getElementById('docError').textContent = 'Source and target languages must be different.';
+                return;
+            }
+
+            document.getElementById('docLoading').style.display = 'inline';
+            document.getElementById('docError').textContent = '';
+            document.getElementById('downloadButton').style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('target_lang', targetLang);
+            if (sourceLang) formData.append('source_lang', sourceLang);
+
+            try {
+                const response = await axios.post(`${API_URL}/translate_document`, formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+                console.log("Document translation response:", response.data);
+                documentId = response.data.document_id;
+                documentKey = response.data.document_key;
+                checkDocumentStatus();
+            } catch (error) {
+                console.error('Error translating document:', error.response ? error.response.data : error);
+                document.getElementById('docError').textContent = `Error translating document: ${error.response ? error.response.data.detail : error.message}`;
+                document.getElementById('docLoading').style.display = 'none';
+            }
+        }
+
+        async function checkDocumentStatus() {
+            try {
+                const response = await axios.get(`${API_URL}/document_status/${documentId}?document_key=${documentKey}`);
+                console.log("Document status response:", response.data);
+                const status = response.data.status;
+                document.getElementById('documentStatus').textContent = `Document status: ${status}`;
+                
+                if (status === 'done') {
+                    document.getElementById('downloadButton').style.display = 'block';
+                    document.getElementById('docLoading').style.display = 'none';
+                } else if (status === 'error') {
+                    document.getElementById('docError').textContent = `Error translating document: ${response.data.message}`;
+                    document.getElementById('docLoading').style.display = 'none';
+                } else {
+                    setTimeout(checkDocumentStatus, 5000);
+                }
+            } catch (error) {
+                console.error('Error checking document status:', error.response ? error.response.data : error);
+                document.getElementById('docError').textContent = `Error checking document status: ${error.response ? error.response.data.detail : error.message}`;
+                document.getElementById('docLoading').style.display = 'none';
+            }
+        }
+
+        async function downloadTranslatedDocument() {
+            try {
+                const response = await axios.get(`${API_URL}/download_document/${documentId}?document_key=${documentKey}`, {
+                    responseType: 'blob'
+                });
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'translated_document.pdf');
+                document.body.appendChild(link);
+                link.click();
+            } catch (error) {
+                console.error('Error downloading translated document:', error);
+                document.getElementById('docError').textContent = 'Error downloading translated document. Please try again.';
+            }
+        }
+    </script>
+</body>
+</html>
