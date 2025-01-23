@@ -5,46 +5,60 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 import os
 from dotenv import load_dotenv
-import uuid
+import json
 
 load_dotenv()
 
 app = FastAPI()
-"""
-cd /Users/mg/Desktop/GitHub/Astral_Code/astral_deepl_api_pt
-uvicorn deepl_api:app --reload
-"""
 
-# Mount the static files directory
 app.mount("/static", StaticFiles(directory="."), name="static")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY")
 DEEPL_API_URL = "https://api.deepl.com/v2"
 
-async def deepl_request(endpoint, data, files=None):
-    """
-    Make a request to the DeepL API.
-
-    Args:
-    endpoint (str): The API endpoint to call.
-    data (dict): The data to send with the request.
-    files (dict, optional): Files to upload for document translation.
-
-    Returns:
-    httpx.Response: The response from the DeepL API.
-    """
+async def deepl_request(
+    endpoint: str,
+    data: dict,
+    method: str = "POST",
+    files: dict = None
+):
     headers = {"Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}"}
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{DEEPL_API_URL}/{endpoint}", headers=headers, data=data, files=files)
-    return response
+        try:
+            if method == "POST":
+                response = await client.post(
+                    f"{DEEPL_API_URL}/{endpoint}",
+                    headers=headers,
+                    data=data,
+                    files=files
+                )
+            elif method == "GET":
+                response = await client.get(
+                    f"{DEEPL_API_URL}/{endpoint}",
+                    headers=headers,
+                    params=data
+                )
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+            
+            return response
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+def get_error_detail(response: httpx.Response) -> str:
+    try:
+        error_data = response.json()
+        return error_data.get("message", response.text)
+    except json.JSONDecodeError:
+        return response.text
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -53,22 +67,11 @@ async def root():
     return HTMLResponse(content=content)
 
 @app.post("/translate_text")
-async def translate_text(text: str = Form(...), target_lang: str = Form(...), source_lang: str = Form(None)):
-    """
-    Translate text using the DeepL API.
-
-    Args:
-    text (str): The text to translate.
-    target_lang (str): The target language code.
-    source_lang (str, optional): The source language code. If not provided, DeepL will auto-detect the language.
-
-    Returns:
-    dict: A dictionary containing the translated text.
-    """
-    print(f"Received text: {text}")
-    print(f"Target language: {target_lang}")
-    print(f"Source language: {source_lang}")
-    
+async def translate_text(
+    text: str = Form(...),
+    target_lang: str = Form(...),
+    source_lang: str = Form(None)
+):
     data = {
         "text": text,
         "target_lang": target_lang,
@@ -82,74 +85,96 @@ async def translate_text(text: str = Form(...), target_lang: str = Form(...), so
         result = response.json()
         return {"translated_text": result["translations"][0]["text"]}
     else:
-        print(f"DeepL API error: {response.status_code} - {response.text}")
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        detail = get_error_detail(response)
+        raise HTTPException(status_code=response.status_code, detail=detail)
 
 @app.post("/translate_document")
-async def translate_document(file: UploadFile = File(...), target_lang: str = Form(...), source_lang: str = Form(None)):
-    """
-    Translate a document using the DeepL API.
+async def translate_document(
+    file: UploadFile = File(...),
+    target_lang: str = Form(...),
+    source_lang: str = Form(None)
+):
+    if source_lang and source_lang == target_lang:
+        raise HTTPException(
+            status_code=400,
+            detail="Source and target languages must be different"
+        )
 
-    Args:
-    file (UploadFile): The document file to translate.
-    target_lang (str): The target language code.
-    source_lang (str, optional): The source language code. If not provided, DeepL will auto-detect the language.
-
-    Returns:
-    dict: A dictionary containing the document_id and document_key for status checking and download.
-    """
-    print(f"Received document: {file.filename}")
-    print(f"Target language: {target_lang}")
-    print(f"Source language: {source_lang}")
-    
     allowed_extensions = ['.txt', '.pdf', '.docx', '.pptx', '.xlsx']
     file_extension = os.path.splitext(file.filename)[1].lower()
     
     if file_extension not in allowed_extensions:
         raise HTTPException(status_code=400, detail="Unsupported file format")
 
-    data = {
-        "target_lang": target_lang,
-    }
+    data = {"target_lang": target_lang}
     if source_lang:
         data["source_lang"] = source_lang
 
     files = {"file": (file.filename, file.file, file.content_type)}
-    
-    response = await deepl_request("document", data, files)
-    
-    print(f"DeepL API response status: {response.status_code}")
-    print(f"DeepL API response content: {response.text}")
-    
-    if response.status_code == 200:
-        result = response.json()
-        return {"document_id": result["document_id"], "document_key": result["document_key"]}
-    else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-
-@app.get("/document_status/{document_id}")
-async def document_status(document_id: str, document_key: str):
-    print(f"Checking status for document_id: {document_id}")
-    data = {"document_key": document_key}
-    response = await deepl_request(f"document/{document_id}", data)
-    
-    print(f"DeepL API status response: {response.status_code}")
-    print(f"DeepL API status content: {response.text}")
+    response = await deepl_request("document", data, files=files)
     
     if response.status_code == 200:
         return response.json()
     else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        detail = get_error_detail(response)
+        raise HTTPException(status_code=response.status_code, detail=detail)
+
+@app.get("/document_status/{document_id}")
+async def document_status(document_id: str, document_key: str):
+    response = await deepl_request(
+        f"document/{document_id}",
+        {"document_key": document_key},
+        method="GET"
+    )
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        detail = get_error_detail(response)
+        raise HTTPException(status_code=response.status_code, detail=detail)
 
 @app.get("/download_document/{document_id}")
 async def download_document(document_id: str, document_key: str):
-    data = {"document_key": document_key}
-    response = await deepl_request(f"document/{document_id}/result", data)
+    response = await deepl_request(
+        f"document/{document_id}/result",
+        {"document_key": document_key},
+        method="GET"
+    )
     
     if response.status_code == 200:
-        temp_file = f"temp_{uuid.uuid4()}.pdf"
+        # Get the content type from DeepL's response
+        content_type = response.headers.get("content-type", "application/octet-stream")
+        
+        # Enhanced MIME type mapping with more specific types
+        file_extensions = {
+            "application/pdf": ".pdf",
+            "text/plain": ".txt",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+            "application/json": ".json",  # Add JSON handling
+            "application/octet-stream": ".bin"  # Default binary
+        }
+        
+        # Get extension based on content type, fallback to .bin
+        extension = file_extensions.get(content_type, ".bin")
+        
+        # Create temporary file with proper extension
+        temp_file = f"translated_{document_id}{extension}"
+        
+        # Write binary content
         with open(temp_file, "wb") as f:
             f.write(response.content)
-        return FileResponse(temp_file, filename="translated_document.pdf", media_type="application/pdf")
+        
+        # Return file with proper headers
+        return FileResponse(
+            path=temp_file,
+            media_type=content_type,
+            filename=f"translated_document{extension}",
+            headers={
+                "Content-Disposition": f"attachment; filename=translated_document{extension}"
+            }
+        )
     else:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        detail = get_error_detail(response)
+        raise HTTPException(status_code=response.status_code, detail=detail)
